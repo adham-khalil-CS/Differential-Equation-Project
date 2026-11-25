@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Numerical Analysis Solver</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b2430;--mut:#5d6b7c;--bd:#d9dee5;--ac:#2563eb;--ac2:#e11d48;--ok:#059669;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10151c;--card:#18202a;--tx:#e6ebf2;--mut:#93a1b3;--bd:#2b3644;--ac:#6ea1ff;--ac2:#fb7185;--ok:#34d399;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10151c;--card:#18202a;--tx:#e6ebf2;--mut:#93a1b3;--bd:#2b3644;--ac:#6ea1ff;--ac2:#fb7185;--ok:#34d399;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:22px;margin:0 0 4px}.sub{color:var(--mut);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:16px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.tabs button{border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:8px 14px;border-radius:8px;cursor:pointer;font:inherit}
+.tabs button.on{background:var(--ac);border-color:var(--ac);color:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
+input,select{width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+.wide{grid-column:1/-1}
+.run{margin-top:12px;background:var(--ok);color:#fff;border:0;padding:10px 22px;border-radius:8px;font:inherit;font-weight:600;cursor:pointer}
+.res{font-size:18px;font-weight:600;color:var(--ok)}
+.note{color:var(--mut);font-size:13px}.err{color:var(--ac2);font-weight:600}
+canvas{width:100%;height:340px;display:block;border:1px solid var(--bd);border-radius:8px;background:var(--bg)}
+.tw{max-height:260px;overflow:auto;overflow-x:auto;margin-top:10px;border:1px solid var(--bd);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{padding:5px 10px;text-align:right;border-bottom:1px solid var(--bd);white-space:nowrap}
+th{position:sticky;top:0;background:var(--card)}
+</style>
+</head>
+<body>
+<main>
+<h1>Numerical Analysis Solver</h1>
+<p class="sub">Pick a problem type, enter your data, and get the final result with a graph. Use <code>^</code> for powers; functions: sin, cos, tan, exp, log, sqrt, abs, pi, e.</p>
+<div class="tabs" id="tabs"></div>
+<div class="card"><div class="grid" id="form"></div><button class="run" id="run">Solve</button></div>
+<div class="card" id="out" hidden>
+<div class="res" id="sum"></div><div class="note" id="note"></div>
+<canvas id="cv"></canvas>
+<div class="tw"><table id="tb"></table></div>
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+function fn(expr,vars){
+  const s=expr.replace(/\^/g,'**').replace(/\bln\b/g,'log');
+  try{const f=new Function(vars,'with(Math){var pi=PI,e=E;return ('+s+')}');f.apply(null,vars.split(',').map(()=>1));return f}
+  catch(x){throw new Error('Cannot read expression: '+expr)}
+}
+const num=id=>{const v=parseFloat($(id).value);if(!isFinite(v))throw new Error('Check input: '+id);return v};
+const fx=v=>(Math.abs(v)<1e-4&&v!==0||Math.abs(v)>1e6)?v.toExponential(5):(+v.toFixed(8)).toString();
+const d=(f,x)=>{const h=1e-6;return (f(x+h)-f(x-h))/(2*h)};
+
+const PROBLEMS={
+root:{name:'Root finding',methods:['Bisection','False position','Newton-Raphson','Secant'],
+ fields:m=>[['f','f(x)','x^3 - x - 2',1],
+  ...(m==2?[['x0','x0 (start)','1.5']]:m==3?[['x0','x0','1'],['x1','x1','2']]:[['a','a','1'],['b','b','2']]),
+  ['tol','Tolerance','1e-6'],['mx','Max iterations','50']],
+ run(m){const f=fn($('f').value,'x'),tol=num('tol'),mx=num('mx'),rows=[];let r,pts=[];
+  if(m<2){let a=num('a'),b=num('b'),fa=f(a),fb=f(b),c=a,old=a;
+   if(fa*fb>0)throw new Error('f(a) and f(b) must have opposite signs.');
+   for(let i=1;i<=mx;i++){c=m==0?(a+b)/2:(a*fb-b*fa)/(fb-fa);const fc=f(c);
+    rows.push([i,fx(a),fx(b),fx(c),fx(fc),i>1?fx(Math.abs(c-old)):'-']);
+    if(Math.abs(fc)<tol||(i>1&&Math.abs(c-old)<tol))break;
+    if(fa*fc<0){b=c;fb=fc}else{a=c;fa=fc}old=c}
+   r=c;return{r,rows,head:['n','a','b','x','f(x)','|Δx|'],f,lo:Math.min(num('a'),r),hi:Math.max(num('b'),r)}}
+  if(m==2){let x=num('x0');for(let i=1;i<=mx;i++){const dx=d(f,x);if(Math.abs(dx)<1e-14)throw new Error("f'(x) ≈ 0, Newton fails here.");
+    const xn=x-f(x)/dx;rows.push([i,fx(x),fx(f(x)),fx(xn),fx(Math.abs(xn-x))]);const done=Math.abs(xn-x)<tol;x=xn;if(done)break}
+   r=x;return{r,rows,head:['n','xₙ','f(xₙ)','xₙ₊₁','|Δx|'],f,lo:num('x0'),hi:r}}
+  let x0=num('x0'),x1=num('x1');for(let i=1;i<=mx;i++){const f0=f(x0),f1=f(x1);if(f1===f0)break;const x2=x1-f1*(x1-x0)/(f1-f0);
+    rows.push([i,fx(x0),fx(x1),fx(x2),fx(f(x2)),fx(Math.abs(x2-x1))]);const done=Math.abs(x2-x1)<tol;x0=x1;x1=x2;if(done)break}
+  r=x1;return{r,rows,head:['n','x₀','x₁','x₂','f(x₂)','|Δx|'],f,lo:Math.min(num('x0'),num('x1'),r),hi:Math.max(num('x0'),num('x1'),r)}},
+ show(o){const pad=Math.max(1,(o.hi-o.lo)*.6);
+  draw({f:o.f,lo:o.lo-pad,hi:o.hi+pad,marks:[[o.r,0,'root']],zero:1});
+  return[`Root ≈ ${fx(o.r)}`,`f(root) = ${fx(o.f(o.r))} · ${o.rows.length} iterations`]}},
+
+int:{name:'Integration',methods:['Trapezoidal','Simpson 1/3'],
+ fields:()=>[['f','f(x)','sin(x)',1],['a','a (lower)','0'],['b','b (upper)','3.14159265'],['n','Subintervals n','10']],
+ run(m){const f=fn($('f').value,'x'),a=num('a'),b=num('b');let n=Math.round(num('n'));if(n<1)throw new Error('n must be ≥ 1');
+  if(m==1&&n%2){n++}const h=(b-a)/n,rows=[];let s=0;
+  for(let i=0;i<=n;i++){const x=a+i*h,y=f(x);const w=m==0?(i==0||i==n?1:2):(i==0||i==n?1:i%2?4:2);s+=w*y;rows.push([i,fx(x),fx(y),w])}
+  const r=m==0?s*h/2:s*h/3;return{r,rows,head:['i','xᵢ','f(xᵢ)','weight'],f,a,b,n}},
+ show(o){const p=(o.b-o.a)*.15||1;draw({f:o.f,lo:o.a-p,hi:o.b+p,shade:[o.a,o.b],zero:1});
+  return[`∫ ≈ ${fx(o.r)}`,`n = ${o.n} subintervals`]}},
+
+ode:{name:'Differential equations',methods:['Euler','Heun (RK2)','Runge-Kutta 4'],
+ fields:()=>[['f',"y' = f(x, y)",'x + y',1],['x0','x₀','0'],['y0','y(x₀)','1'],['xn','End point xₙ','1'],['h','Step size h','0.1']],
+ run(m){const f=fn($('f').value,'x,y'),x0=num('x0'),y0=num('y0'),xn=num('xn'),h=num('h');
+  if(h<=0||xn<=x0)throw new Error('Need h > 0 and xₙ > x₀.');const N=Math.round((xn-x0)/h);if(N>20000)throw new Error('Too many steps.');
+  let x=x0,y=y0;const rows=[[0,fx(x),fx(y)]],pts=[[x,y]];
+  for(let i=1;i<=N;i++){let k;
+   if(m==0)k=f(x,y);else if(m==1){const k1=f(x,y),k2=f(x+h,y+h*k1);k=(k1+k2)/2}
+   else{const k1=f(x,y),k2=f(x+h/2,y+h*k1/2),k3=f(x+h/2,y+h*k2/2),k4=f(x+h,y+h*k3);k=(k1+2*k2+2*k3+k4)/6}
+   y+=h*k;x=x0+i*h;rows.push([i,fx(x),fx(y)]);pts.push([x,y])}
+  return{r:y,x,rows,head:['step','x','y'],pts}},
+ show(o){draw({pts:o.pts,marks:[[o.x,o.r,'end']]});return[`y(${fx(o.x)}) ≈ ${fx(o.r)}`,`${o.rows.length-1} steps`]}},
+
+interp:{name:'Interpolation',methods:['Lagrange','Newton divided difference'],
+ fields:()=>[['pts','Points (x,y; x,y; ...)','0,1; 1,3; 2,2; 4,5',1],['q','Evaluate at x','3']],
+ run(m){const P=$('pts').value.split(/;|\n/).map(s=>s.trim()).filter(Boolean).map(s=>s.split(/[ ,]+/).map(Number));
+  if(P.length<2||P.some(p=>p.length!=2||p.some(v=>!isFinite(v))))throw new Error('Enter at least 2 points like: 0,1; 1,3');
+  const X=P.map(p=>p[0]),Y=P.map(p=>p[1]),n=P.length,q=num('q');
+  const lag=x=>X.reduce((s,xi,i)=>s+Y[i]*X.reduce((p,xj,j)=>j==i?p:p*(x-xj)/(xi-xj),1),0);
+  const D=[Y.slice()];for(let k=1;k<n;k++){D.push([]);for(let i=0;i<n-k;i++)D[k].push((D[k-1][i+1]-D[k-1][i])/(X[i+k]-X[i]))}
+  const nw=x=>{let s=D[0][0],p=1;for(let k=1;k<n;k++){p*=x-X[k-1];s+=D[k][0]*p}return s};
+  const f=m==0?lag:nw;const rows=m==0?P.map((p,i)=>[i,fx(p[0]),fx(p[1])]):D.map((c,k)=>[k,...c.map(fx)]);
+  return{r:f(q),q,f,P,rows,head:m==0?['i','x','y']:['order','coefficients ...'],lo:Math.min(...X),hi:Math.max(...X)}},
+ show(o){const p=(o.hi-o.lo)*.1||1;draw({f:o.f,lo:Math.min(o.lo,o.q)-p,hi:Math.max(o.hi,o.q)+p,marks:[...o.P.map(p=>[p[0],p[1],'']),[o.q,o.r,'P(x)']]});
+  return[`P(${fx(o.q)}) ≈ ${fx(o.r)}`,`degree ${o.P.length-1} polynomial through ${o.P.length} points`]}}
+};
+
+let cur='root';
+function tabs(){$('tabs').innerHTML='';for(const k in PROBLEMS){const b=document.createElement('button');b.textContent=PROBLEMS[k].name;b.className=k==cur?'on':'';b.onclick=()=>{cur=k;tabs();form();$('out').hidden=true};$('tabs').append(b)}}
+function form(){const p=PROBLEMS[cur];let h='<div class="wide"><label>Method</label><select id="m">'+p.methods.map((m,i)=>`<option value="${i}">${m}</option>`).join('')+'</select></div>';
+  const build=()=>{const m=+$('m').value;$('fields').innerHTML=p.fields(m).map(([id,l,v,w])=>`<div class="${w?'wide':''}"><label>${l}</label><input id="${id}" value="${v}"></div>`).join('')};
+  $('form').innerHTML=h+'<div class="grid wide" id="fields" style="padding:0"></div>';build();$('m').onchange=build}
+$('run').onclick=()=>{const p=PROBLEMS[cur];$('out').hidden=false;$('sum').className='res';
+  try{const o=p.run(+$('m').value),[s,n]=p.show(o);$('sum').textContent=s;$('note').textContent=n;
+   $('tb').innerHTML='<tr>'+o.head.map(h=>`<th>${h}</th>`).join('')+'</tr>'+o.rows.map(r=>'<tr>'+r.map(c=>`<td>${c}</td>`).join('')+'</tr>').join('')}
+  catch(e){$('sum').className='res err';$('sum').textContent=e.message;$('note').textContent='';$('tb').innerHTML='';clr()}};
+
+function clr(){const c=$('cv'),x=c.getContext('2d');x.clearRect(0,0,c.width,c.height)}
+function draw(s){
+  const c=$('cv'),dpr=window.devicePixelRatio||1,W=c.clientWidth,H=c.clientHeight;c.width=W*dpr;c.height=H*dpr;
+  const g=c.getContext('2d');g.scale(dpr,dpr);const st=getComputedStyle(document.documentElement);
+  const col=n=>st.getPropertyValue(n).trim();
+  let curve=s.pts;if(s.f){curve=[];for(let i=0;i<=400;i++){const x=s.lo+(s.hi-s.lo)*i/400,y=s.f(x);curve.push([x,isFinite(y)?y:NaN])}}
+  const xs=curve.map(p=>p[0]),ys=curve.map(p=>p[1]).filter(isFinite);
+  let x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  (s.marks||[]).forEach(m=>{y0=Math.min(y0,m[1]);y1=Math.max(y1,m[1])});
+  if(s.zero||s.shade){y0=Math.min(y0,0);y1=Math.max(y1,0)}
+  if(s.f&&y1-y0>1e3){y0=Math.max(y0,-50);y1=Math.min(y1,50)}
+  const py=(y1-y0||1)*.08;y0-=py;y1+=py;
+  const L=48,R=14,T=12,B=26,X=x=>L+(x-x0)/(x1-x0||1)*(W-L-R),Y=y=>H-B-(y-y0)/(y1-y0||1)*(H-T-B);
+  g.font='11px system-ui';g.fillStyle=col('--mut');g.strokeStyle=col('--bd');g.lineWidth=1;
+  for(let i=0;i<=5;i++){const xv=x0+(x1-x0)*i/5,yv=y0+(y1-y0)*i/5;
+   g.beginPath();g.moveTo(X(xv),T);g.lineTo(X(xv),H-B);g.moveTo(L,Y(yv));g.lineTo(W-R,Y(yv));g.stroke();
+   g.textAlign='center';g.fillText(+xv.toPrecision(3),X(xv),H-8);g.textAlign='right';g.fillText(+yv.toPrecision(3),L-5,Y(yv)+4)}
+  g.strokeStyle=col('--mut');g.lineWidth=1.3;g.beginPath();
+  if(y0<0&&y1>0){g.moveTo(L,Y(0));g.lineTo(W-R,Y(0))}if(x0<0&&x1>0){g.moveTo(X(0),T);g.lineTo(X(0),H-B)}g.stroke();
+  g.save();g.beginPath();g.rect(L,T,W-L-R,H-T-B);g.clip();
+  if(s.shade&&s.f){g.fillStyle=col('--ac');g.globalAlpha=.25;g.beginPath();g.moveTo(X(s.shade[0]),Y(0));
+   for(let i=0;i<=200;i++){const x=s.shade[0]+(s.shade[1]-s.shade[0])*i/200;g.lineTo(X(x),Y(s.f(x)))}g.lineTo(X(s.shade[1]),Y(0));g.fill();g.globalAlpha=1}
+  g.strokeStyle=col('--ac');g.lineWidth=2.2;g.beginPath();let pen=false;
+  curve.forEach(p=>{if(!isFinite(p[1])){pen=false;return}pen?g.lineTo(X(p[0]),Y(p[1])):g.moveTo(X(p[0]),Y(p[1]));pen=true});g.stroke();
+  g.restore();
+  (s.marks||[]).forEach(m=>{g.fillStyle=col('--ac2');g.beginPath();g.arc(X(m[0]),Y(m[1]),5,0,7);g.fill();
+   if(m[2]){g.fillStyle=col('--tx');g.font='bold 12px system-ui';g.textAlign='left';g.fillText(`${m[2]} (${fx(m[0])}, ${fx(m[1])})`,Math.min(X(m[0])+8,W-150),Y(m[1])-9)}})}
+addEventListener('resize',()=>{if(!$('out').hidden&&$('sum').className=='res')$('run').click()});
+tabs();form();
+</script>
+</body>
+</html>
